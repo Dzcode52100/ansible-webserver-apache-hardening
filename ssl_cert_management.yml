@@ -1,0 +1,48 @@
+---
+- name: Gestion automatique des certificats SSL/TLS (LAB)
+  hosts: webservers
+  become: yes
+
+  vars:
+    cert_path: /etc/ssl/certs/apache-selfsigned.crt
+    key_path: /etc/ssl/private/apache-selfsigned.key
+
+  tasks:
+
+    - name: Installer OpenSSL si absent
+      apt:
+        name: openssl
+        state: present
+        update_cache: yes
+
+    - name: Générer certificat auto-signé si absent
+      command: >
+        openssl req -x509 -nodes -days 365
+        -subj "/C=FR/ST=France/L=Paris/O=TP/OU=IT/CN={{ inventory_hostname }}"
+        -newkey rsa:2048
+        -keyout {{ key_path }}
+        -out {{ cert_path }}
+      args:
+        creates: "{{ cert_path }}"
+
+    - name: Vérifier date d'expiration du certificat
+      shell: openssl x509 -enddate -noout -in {{ cert_path }}
+      register: cert_expiry
+
+    - name: Afficher date expiration
+      debug:
+        var: cert_expiry.stdout
+
+    - name: Activer module SSL Apache
+      command: a2enmod ssl
+      notify: Restart Apache
+
+    - name: Activer site SSL par défaut
+      command: a2ensite default-ssl.conf
+      notify: Restart Apache
+
+  handlers:
+    - name: Restart Apache
+      service:
+        name: apache2
+        state: restarted

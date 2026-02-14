@@ -1,0 +1,17 @@
+---
+- name: Appliquer les mises à jour de sécurité
+  hosts: webservers
+  become: yes
+  tasks:
+
+    - name: Mettre à jour la liste des paquets
+      apt:
+        update_cache: yes
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Installer les mises à jour de sécurité
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+      when: ansible_facts['os_family'] == "Debian"

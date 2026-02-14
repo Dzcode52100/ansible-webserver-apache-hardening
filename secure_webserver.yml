@@ -1,0 +1,83 @@
+
+---
+- name: Configuration sécurisée des serveurs web
+  hosts: webservers
+  become: true
+  vars:
+    http_port: 80
+    https_port: 443
+
+  tasks:
+
+    - name: Mettre à jour les paquets
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Installer Apache2
+      apt:
+        name: apache2
+        state: present
+
+    - name: Activer les modules Apache de sécurité
+      apache2_module:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - ssl
+        - headers
+        - rewrite
+
+    - name: Configurer le pare-feu pour HTTP et HTTPS
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+      loop:
+        - "{{ http_port }}"
+        - "{{ https_port }}"
+
+    - name: Activer le pare-feu
+      ufw:
+        state: enabled
+
+    - name: Déployer certificat SSL auto-signé (exemple)
+      command: >
+        openssl req -x509 -nodes -days 365
+        -subj "/C=FR/ST=France/L=Paris/O=AFPA/OU=IT/CN={{ inventory_hostname }}"
+        -newkey rsa:2048
+        -keyout /etc/ssl/private/apache-selfsigned.key
+        -out /etc/ssl/certs/apache-selfsigned.crt
+      args:
+        creates: /etc/ssl/certs/apache-selfsigned.crt
+
+    - name: Configurer Apache pour HTTPS
+      copy:
+        dest: /etc/apache2/sites-available/default-ssl.conf
+        content: |
+          <VirtualHost *:443>
+              ServerAdmin webmaster@localhost
+              DocumentRoot /var/www/html
+              SSLEngine on
+              SSLCertificateFile /etc/ssl/certs/apache-selfsigned.crt
+              SSLCertificateKeyFile /etc/ssl/private/apache-selfsigned.key
+              <Directory /var/www/html>
+                  Options Indexes FollowSymLinks
+                  AllowOverride All
+                  Require all granted
+              </Directory>
+          </VirtualHost>
+
+    - name: Activer le site SSL et module SSL
+      apache2_module:
+        name: ssl
+        state: present
+
+    - name: Activer le site SSL
+      command: a2ensite default-ssl.conf
+      args:
+        creates: /etc/apache2/sites-enabled/default-ssl.conf
+
+    - name: Redémarrer Apache
+      service:
+        name: apache2
+        state: restarted
